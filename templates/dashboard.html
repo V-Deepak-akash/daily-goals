@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<h2>Today's Plan</h2>
+
+{% for task in tasks %}
+  <div class="task">
+    <h3>{{ task.title }}</h3>
+    <p>{{ task.description }}</p>
+
+    {% if task.status == 'pending' %}
+      <button onclick="startTask({{ task.id }})">Start</button>
+    {% elif task.status == 'active' %}
+      <button onclick="completeTask({{ task.id }})">Complete</button>
+    {% else %}
+      <span>Done ✔</span>
+    {% endif %}
+  </div>
+{% endfor %}
+
+<hr>
+
+<h3>Add Friend</h3>
+<form method="POST" action="/add-friend">
+  <input name="username" placeholder="Friend username" required>
+  <button>Add</button>
+</form>
+
+<hr>
+
+<h3>Friend Progress</h3>
+
+{% for friend, tasks in friends_data %}
+  <h4>{{ friend.username }}</h4>
+  {% if tasks %}
+    {% for t in tasks %}
+      <div class="task">
+        {{ t.title }} — {{ t.status }}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p>No plan today</p>
+  {% endif %}
+{% endfor %}
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

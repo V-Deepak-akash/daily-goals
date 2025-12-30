@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>Plan Today (Total = 100)</h2>
+<button onclick="save()">Save Plan</button>
+
+<script>
+function save(){
+  fetch("/plan",{
+    method:"POST",
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      tasks:[
+        {title:"Workout",description:"Gym",start:"06:00",end:"07:00",points:30},
+        {title:"Study",description:"Deep work",start:"09:00",end:"12:00",points:40},
+        {title:"Project",description:"Build app",start:"14:00",end:"18:00",points:30}
+      ]
+    })
+  }).then(r=>r.json()).then(console.log)
+}
+</script>
+</body>
+</html>

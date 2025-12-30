@@ -1,0 +1,19 @@
+body {
+  font-family: sans-serif;
+  background: #0f0f0f;
+  color: #eee;
+}
+
+.task {
+  background: #1c1c1c;
+  padding: 15px;
+  margin: 10px;
+  border-radius: 10px;
+}
+button {
+  background: #4caf50;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
