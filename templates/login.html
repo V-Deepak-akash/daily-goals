@@ -1,10 +1,32 @@
 <!DOCTYPE html>
 <html>
+
 <body>
-<h2>Login</h2>
-<form method="POST">
-  <input name="username" placeholder="Your name" required>
-  <button type="submit">Enter</button>
-</form>
+
+  <h2 id="title">Login</h2>
+
+  {% if error %}
+  <p style="color:red">{{ error }}</p>
+  {% endif %}
+
+  <form method="POST">
+    <input name="username" placeholder="Username" required>
+    <input name="password" type="password" placeholder="Password" required>
+    <input type="hidden" name="mode" id="mode" value="login">
+    <button type="submit" id="submitBtn">Login</button>
+  </form>
+
+  <br>
+  <button onclick="switchMode()">New user?</button>
+
+  <script>
+    function switchMode() {
+      document.getElementById("title").innerText = "Register";
+      document.getElementById("submitBtn").innerText = "Create Account";
+      document.getElementById("mode").value = "register";
+    }
+  </script>
+
 </body>
+
 </html>

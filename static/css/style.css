@@ -17,3 +17,15 @@ button {
   border-radius: 6px;
   cursor: pointer;
 }
+
+input {
+  display: block;
+  margin: 5px 0;
+  padding: 6px;
+  border-radius: 6px;
+  border: none;
+}
+
+small {
+  color: #aaa;
+}

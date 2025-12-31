@@ -1,52 +1,78 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
+
 <body>
 
-<h2>Today's Plan</h2>
+  <h2>Today's Plan</h2>
 
-{% for task in tasks %}
+  {% if not plan_exists and not locked %}
+  <p>No plan for today.</p>
+  <a href="/plan">
+    <button>Create Today's Plan</button>
+  </a>
+  {% elif not plan_exists and locked %}
+  <p>⏳ Planning is locked for today</p>
+  {% endif %}
+
+
+  {% for task in tasks %}
   <div class="task">
     <h3>{{ task.title }}</h3>
     <p>{{ task.description }}</p>
+    <small>
+      🕒 {{ task.expected_start.strftime('%H:%M') }}
+      –
+      {{ task.expected_end.strftime('%H:%M') }}
+    </small>
+
 
     {% if task.status == 'pending' %}
-      <button onclick="startTask({{ task.id }})">Start</button>
+    <button onclick="startTask({{ task.id }})">Start</button>
     {% elif task.status == 'active' %}
-      <button onclick="completeTask({{ task.id }})">Complete</button>
+    <button onclick="completeTask({{ task.id }})">Complete</button>
     {% else %}
-      <span>Done ✔</span>
+    <span>Done ✔</span>
     {% endif %}
   </div>
-{% endfor %}
+  {% endfor %}
 
-<hr>
+  <hr>
 
-<h3>Add Friend</h3>
-<form method="POST" action="/add-friend">
-  <input name="username" placeholder="Friend username" required>
-  <button>Add</button>
-</form>
+  <h3>Add Friend</h3>
+  <form method="POST" action="/add-friend">
+    <input name="username" placeholder="Friend username" required>
+    <button>Add</button>
+  </form>
 
-<hr>
+  <hr>
 
-<h3>Friend Progress</h3>
+  <h3>Friend Progress</h3>
 
-{% for friend, tasks in friends_data %}
+  {% for friend, tasks in friends_data %}
   <h4>{{ friend.username }}</h4>
   {% if tasks %}
-    {% for t in tasks %}
-      <div class="task">
-        {{ t.title }} — {{ t.status }}
-      </div>
-    {% endfor %}
-  {% else %}
-    <p>No plan today</p>
-  {% endif %}
-{% endfor %}
+  {% for t in tasks %}
+  <div class="task">
+    {{ t.title }} — {{ t.status }}
+    <br>
+    <small>
+      🕒 {{ t.expected_start.strftime('%H:%M') }}
+      –
+      {{ t.expected_end.strftime('%H:%M') }}
+    </small>
 
-<script src="/static/js/app.js"></script>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p>No plan today</p>
+  {% endif %}
+  {% endfor %}
+
+  <script src="/static/js/app.js"></script>
 </body>
+
 </html>

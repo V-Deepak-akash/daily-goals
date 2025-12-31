@@ -1,23 +1,111 @@
 <!DOCTYPE html>
 <html>
-<body>
-<h2>Plan Today (Total = 100)</h2>
-<button onclick="save()">Save Plan</button>
 
-<script>
-function save(){
-  fetch("/plan",{
-    method:"POST",
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      tasks:[
-        {title:"Workout",description:"Gym",start:"06:00",end:"07:00",points:30},
-        {title:"Study",description:"Deep work",start:"09:00",end:"12:00",points:40},
-        {title:"Project",description:"Build app",start:"14:00",end:"18:00",points:30}
-      ]
-    })
-  }).then(r=>r.json()).then(console.log)
-}
-</script>
+<head>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+  <h2>Create Today's Plan</h2>
+
+  <div id="tasks"></div>
+
+  <button onclick="addTask()">➕ Add Task</button>
+
+  <p>Total Points: <span id="total">0</span> / 100</p>
+
+  <button onclick="save()">Save Plan</button>
+
+  <script>
+    let tasks = [];
+
+    function addTask() {
+      tasks.push({
+        title: "",
+        description: "",
+        start: "",
+        end: "",
+        points: 0
+      });
+      distributePoints();
+      render();
+    }
+
+    function removeTask(i) {
+      tasks.splice(i, 1);
+      distributePoints();
+      render();
+    }
+
+    function updateField(i, field, value) {
+      tasks[i][field] = value;
+    }
+
+    function distributePoints() {
+      if (tasks.length === 0) return;
+
+      const base = Math.floor(100 / tasks.length);
+      const remainder = 100 % tasks.length;
+
+      tasks.forEach((t, i) => {
+        t.points = base + (i === 0 ? remainder : 0);
+      });
+    }
+
+    function render() {
+      const container = document.getElementById("tasks");
+      container.innerHTML = "";
+
+      tasks.forEach((t, i) => {
+        container.innerHTML += `
+      <div class="task">
+        <input placeholder="Title"
+          value="${t.title}"
+          oninput="updateField(${i}, 'title', this.value)">
+
+        <input placeholder="Description"
+          value="${t.description}"
+          oninput="updateField(${i}, 'description', this.value)">
+
+        <input type="time"
+          value="${t.start}"
+          oninput="updateField(${i}, 'start', this.value)">
+
+        <input type="time"
+          value="${t.end}"
+          oninput="updateField(${i}, 'end', this.value)">
+
+        <span>${t.points}%</span>
+        <button onclick="removeTask(${i})">❌</button>
+      </div>
+    `;
+      });
+
+      document.getElementById("total").innerText =
+        tasks.reduce((s, t) => s + t.points, 0);
+    }
+
+    function save() {
+      if (tasks.length === 0) {
+        alert("Add at least one task");
+        return;
+      }
+
+      fetch("/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks })
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) alert(d.error);
+          else window.location.href = "/";
+        });
+    }
+  </script>
+
+
 </body>
+
 </html>

@@ -1,8 +1,12 @@
 from flask import Flask, render_template, redirect, request, jsonify, url_for
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from models import db, User, DayPlan, Task, Friend
-from datetime import datetime, date, time
+from datetime import datetime, date, time as dtime
 import os
+
+def is_plan_locked():
+    now = datetime.now().time()
+    return now >= dtime(0, 0)  # after midnight
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, "instance", "app.db")
@@ -29,15 +33,27 @@ def load_user(user_id):
 def login():
     if request.method == 'POST':
         username = request.form['username']
+        password = request.form['password']
+        mode = request.form['mode']
 
         user = User.query.filter_by(username=username).first()
-        if not user:
+
+        if mode == "register":
+            if user:
+                return render_template("login.html", error="Username already exists")
             user = User(username=username)
+            user.set_password(password)
             db.session.add(user)
             db.session.commit()
+            login_user(user)
+            return redirect('/')
+
+        # LOGIN MODE
+        if not user or not user.check_password(password):
+            return render_template("login.html", error="Invalid username or password")
 
         login_user(user)
-        return redirect(url_for('dashboard'))
+        return redirect('/')
 
     return render_template('login.html')
 
@@ -78,20 +94,30 @@ def dashboard():
         ).all() if friend_plan else []
 
         friends_data.append((friend_user, friend_tasks))
+    locked = is_plan_locked()
 
     return render_template(
-        'dashboard.html',
-        tasks=tasks,
-        friends_data=friends_data
-    )
+    'dashboard.html',
+    tasks=tasks,
+    friends_data=friends_data,
+    plan_exists=bool(plan),
+    locked=locked
+)
 
 # ---------------- PLAN DAY ----------------
 @app.route('/plan', methods=['GET', 'POST'])
 @login_required
 def plan_day():
     if request.method == 'POST':
-        if DayPlan.query.filter_by(user_id=current_user.id, date=date.today()).first():
+        if is_plan_locked():
+            return jsonify({"error": "Planning is locked for today"})
+
+        if DayPlan.query.filter_by(
+        user_id=current_user.id,
+        date=date.today()
+        ).first():
             return jsonify({"error": "Plan already exists"})
+
 
         plan = DayPlan(user_id=current_user.id, date=date.today())
         db.session.add(plan)
@@ -104,8 +130,8 @@ def plan_day():
                 dayplan_id=plan.id,
                 title=t['title'],
                 description=t['description'],
-                expected_start=time.fromisoformat(t['start']),
-                expected_end=time.fromisoformat(t['end']),
+                expected_start=dtime.fromisoformat(t['start']),
+                expected_end=dtime.fromisoformat(t['end']),
                 points=t['points']
             )
             db.session.add(task)
@@ -168,6 +194,16 @@ def add_friend():
         db.session.commit()
 
     return redirect('/')
+
+@app.route('/task/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_task(id):
+    task = Task.query.get_or_404(id)
+    if task.status != "pending":
+        return jsonify(error="Cannot delete started task")
+    db.session.delete(task)
+    db.session.commit()
+    return jsonify(ok=True)
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
