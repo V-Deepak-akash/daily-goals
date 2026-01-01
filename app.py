@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, request, jsonify, url_for
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from models import db, User, DayPlan, Task, Friend
-from datetime import datetime, date, time as dtime
+from datetime import datetime, date, time as dtime, timedelta
 import os
 
 def is_plan_locked():
@@ -69,6 +69,7 @@ def logout():
 def dashboard():
     today = date.today()
 
+    # ---------- TODAY ----------
     plan = DayPlan.query.filter_by(
         user_id=current_user.id,
         date=today
@@ -78,12 +79,12 @@ def dashboard():
         dayplan_id=plan.id
     ).all() if plan else []
 
+    # ---------- FRIENDS ----------
     friends_data = []
-
     friends = Friend.query.filter_by(user_id=current_user.id).all()
+
     for f in friends:
         friend_user = User.query.get(f.friend_id)
-
         friend_plan = DayPlan.query.filter_by(
             user_id=friend_user.id,
             date=today
@@ -94,15 +95,43 @@ def dashboard():
         ).all() if friend_plan else []
 
         friends_data.append((friend_user, friend_tasks))
+
+    # ---------- YESTERDAY SUMMARY ----------
+    yesterday = today - timedelta(days=1)
+    summary = None
+
+    y_plan = DayPlan.query.filter_by(
+        user_id=current_user.id,
+        date=yesterday
+    ).first()
+
+    if y_plan:
+        y_tasks = Task.query.filter_by(dayplan_id=y_plan.id).all()
+
+        done = len([t for t in y_tasks if t.status == "completed"])
+        total = len(y_tasks)
+
+        planned_time = sum(t.planned_duration_minutes or 0 for t in y_tasks)
+        actual_time = sum(t.actual_duration_minutes or 0 for t in y_tasks)
+
+        summary = {
+            "percent": int((done / total) * 100) if total else 0,
+            "planned": planned_time,
+            "actual": actual_time,
+            "saved": planned_time - actual_time
+        }
+
     locked = is_plan_locked()
 
     return render_template(
-    'dashboard.html',
-    tasks=tasks,
-    friends_data=friends_data,
-    plan_exists=bool(plan),
-    locked=locked
-)
+        'dashboard.html',
+        tasks=tasks,
+        friends_data=friends_data,
+        plan_exists=bool(plan),
+        locked=locked,
+        summary=summary
+    )
+
 
 # ---------------- PLAN DAY ----------------
 @app.route('/plan', methods=['GET', 'POST'])
@@ -119,7 +148,8 @@ def plan_day():
             return jsonify({"error": "Plan already exists"})
 
 
-        plan = DayPlan(user_id=current_user.id, date=date.today())
+        plan_date = date.today() + timedelta(days=1)
+        plan = DayPlan(user_id=current_user.id, date=plan_date)
         db.session.add(plan)
         db.session.commit()
 
@@ -149,8 +179,13 @@ def plan_day():
 @login_required
 def start_task(id):
     task = Task.query.get_or_404(id)
-    task.actual_start = datetime.now()
+
+    t = request.json['time']
+    h, m = map(int, t.split(':'))
+
+    task.actual_start = datetime.combine(date.today(), dtime(h, m))
     task.status = "active"
+
     db.session.commit()
     return jsonify(ok=True)
 
@@ -158,19 +193,25 @@ def start_task(id):
 @login_required
 def complete_task(id):
     task = Task.query.get_or_404(id)
-    task.actual_end = datetime.now()
+
+    t = request.json['time']
+    h, m = map(int, t.split(':'))
+
+    task.actual_end = datetime.combine(date.today(), dtime(h, m))
     task.status = "completed"
 
-    expected_end = datetime.combine(date.today(), task.expected_end)
-    delta = task.actual_end - expected_end
+    planned = (
+        datetime.combine(date.today(), task.expected_end) -
+        datetime.combine(date.today(), task.expected_start)
+    ).seconds // 60
 
-    if delta.total_seconds() < 0:
-        task.points += int(task.points * 0.1)
-    elif delta.total_seconds() > 0:
-        task.points -= int(task.points * 0.1)
+    actual = (task.actual_end - task.actual_start).seconds // 60
+
+    task.planned_duration_minutes = planned
+    task.actual_duration_minutes = actual
 
     db.session.commit()
-    return jsonify(points=task.points)
+    return jsonify(ok=True)
 
 @app.route('/add-friend', methods=['POST'])
 @login_required

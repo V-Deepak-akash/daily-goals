@@ -40,6 +40,16 @@
   </div>
   {% endfor %}
 
+  {% if summary %}
+  <hr>
+  <h3>Yesterday</h3>
+  <p>Completion: {{ summary.percent }}%</p>
+  <p>Planned Time: {{ summary.planned }} min</p>
+  <p>Actual Time: {{ summary.actual }} min</p>
+  <p>Time Saved: {{ summary.saved }} min</p>
+  {% endif %}
+
+
   <hr>
 
   <h3>Add Friend</h3>
