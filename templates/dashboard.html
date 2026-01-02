@@ -6,6 +6,7 @@
 </head>
 
 <body>
+  <h2>Hi {{ current_user.username }} 👋</h2>
 
   <h2>Today's Plan</h2>
 
@@ -17,6 +18,31 @@
   {% elif not plan_exists and locked %}
   <p>⏳ Planning is locked for today</p>
   {% endif %}
+
+  <h3>Timeline</h3>
+
+  <div class="timeline">
+    {% for task in tasks %}
+    <div class="timeline-task
+      {% if task.status == 'completed' %}done
+      {% elif task.status == 'active' %}active
+      {% else %}planned{% endif %}
+    " style="
+      top: {{ (task.expected_start.hour * 60 + task.expected_start.minute) / 1440 * 100 }}%;
+      height: {{ ((task.expected_end.hour * 60 + task.expected_end.minute)
+                 - (task.expected_start.hour * 60 + task.expected_start.minute))
+                 / 1440 * 100 }}%;
+    ">
+      <strong>{{ task.title }}</strong><br>
+      <small>
+        {{ task.expected_start.strftime('%H:%M') }}
+        –
+        {{ task.expected_end.strftime('%H:%M') }}
+      </small>
+    </div>
+    {% endfor %}
+  </div>
+
 
 
   {% for task in tasks %}

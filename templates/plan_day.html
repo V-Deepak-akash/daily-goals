@@ -11,7 +11,8 @@
 
   <div id="tasks"></div>
 
-  <button onclick="addTask()">➕ Add Task</button>
+  <button id="addBtn" onclick="addTask()">➕ Add Task</button>
+  <span id="cooldownText"></span>
 
   <p>Total Points: <span id="total">0</span> / 100</p>
 
@@ -19,8 +20,35 @@
 
   <script>
     let tasks = [];
+    let cooldown = false;
+    let cooldownSeconds = 4;
+
 
     function addTask() {
+      if (cooldown) return;
+
+      cooldown = true;
+      let remaining = cooldownSeconds;
+
+      const btn = document.getElementById("addBtn");
+      const text = document.getElementById("cooldownText");
+
+      btn.disabled = true;
+      text.innerText = ` (${remaining}s)`;
+
+      const interval = setInterval(() => {
+        remaining--;
+        text.innerText = ` (${remaining}s)`;
+
+        if (remaining <= 0) {
+          clearInterval(interval);
+          cooldown = false;
+          btn.disabled = false;
+          text.innerText = "";
+        }
+      }, 600);
+
+      // actual task creation
       tasks.push({
         title: "",
         description: "",
@@ -28,9 +56,11 @@
         end: "",
         points: 0
       });
+
       distributePoints();
       render();
     }
+
 
     function removeTask(i) {
       tasks.splice(i, 1);

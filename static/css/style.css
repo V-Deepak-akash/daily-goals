@@ -29,3 +29,41 @@ input {
 small {
   color: #aaa;
 }
+
+.timeline {
+  position: relative;
+  height: 600px;
+  border-left: 2px solid #444;
+  margin: 20px 0;
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+}
+
+.timeline-task {
+  position: absolute;
+  left: 20px;
+  width: 80%;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.timeline-task.planned {
+  background: #333;
+}
+
+.timeline-task.active {
+  background: #1e88e5;
+}
+
+.timeline-task.done {
+  background: #43a047;
+}
