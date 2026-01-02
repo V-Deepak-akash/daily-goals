@@ -10,6 +10,7 @@ body {
   margin: 10px;
   border-radius: 10px;
 }
+
 button {
   background: #4caf50;
   border: none;
@@ -66,4 +67,282 @@ small {
 
 .timeline-task.done {
   background: #43a047;
+}
+
+.score-ring {
+  position: relative;
+  width: 140px;
+  margin: 20px auto;
+}
+
+.score-ring svg {
+  transform: rotate(-90deg);
+}
+
+.score-ring circle {
+  fill: none;
+  stroke-width: 10;
+}
+
+.score-ring .bg {
+  stroke: #333;
+}
+
+.score-ring .progress {
+  stroke: #4caf50;
+  stroke-dasharray: 377;
+  transition: stroke-dashoffset 1s ease;
+}
+
+.score-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+}
+
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  max-width: 220px;
+  margin: auto;
+}
+
+.day {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #222;
+}
+
+.level-0 {
+  background: #222;
+}
+
+.level-1 {
+  background: #2e7d32;
+}
+
+.level-2 {
+  background: #4caf50;
+}
+
+.level-3 {
+  background: #81c784;
+}
+
+.level-4 {
+  background: #c8e6c9;
+}
+
+.timeline {
+  position: relative;
+  height: 500px;
+  border-left: 2px solid #444;
+  margin: 20px 0;
+}
+
+.timeline-task {
+  position: absolute;
+  left: 16px;
+  width: calc(100% - 30px);
+  border-radius: 8px;
+  padding: 6px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.timeline-task.planned {
+  background: rgba(76, 175, 80, 0.25);
+}
+
+.actual-bar {
+  margin-top: 4px;
+  width: 100%;
+  background: #4caf50;
+  border-radius: 4px;
+}
+
+.leaderboard {
+  margin-top: 10px;
+}
+
+.leaderboard-row {
+  display: flex;
+  justify-content: space-between;
+  background: #1c1c1c;
+  padding: 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  body {
+    font-size: 14px;
+  }
+
+  .timeline {
+    height: 400px;
+  }
+
+  .score-ring {
+    width: 120px;
+  }
+
+  button {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .leaderboard-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-box {
+  background: #1c1c1c;
+  padding: 20px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 320px;
+}
+
+.modal-box input,
+.modal-box select,
+.modal-box textarea {
+  width: 100%;
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+}
+
+/* History Page */
+.history-controls {
+  margin: 10px 0;
+}
+
+.filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.filters button {
+  flex: 1;
+}
+
+.history-task {
+  margin-bottom: 12px;
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.badge.completed {
+  background: #2e7d32;
+}
+
+.badge.cancelled {
+  background: #b71c1c;
+}
+
+.badge.incomplete {
+  background: #f9a825;
+}
+
+.note {
+  background: #2a2a2a;
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.export-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Analytics Page */
+
+.muted {
+  color: #aaa;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.analytics-card {
+  background: #1c1c1c;
+  padding: 16px;
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.metric {
+  background: #2a2a2a;
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+}
+
+.metric-value {
+  display: block;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.export-box {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+/* Mobile tweaks */
+@media (max-width: 600px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
 }

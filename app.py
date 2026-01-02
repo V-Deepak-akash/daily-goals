@@ -3,10 +3,24 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from models import db, User, DayPlan, Task, Friend
 from datetime import datetime, date, time as dtime, timedelta
 import os
+import csv
+from flask import Response
 
-def is_plan_locked():
-    now = datetime.now().time()
-    return now >= dtime(0, 0)  # after midnight
+def is_plan_locked(plan_date):
+    return plan_date <= date.today()
+
+def calculate_streak(user_id):
+    streak = 0
+    d = date.today()
+
+    while True:
+        p = DayPlan.query.filter_by(user_id=user_id, date=d).first()
+        if not p or p.final_score < 70:
+            break
+        streak += 1
+        d -= timedelta(days=1)
+
+    return streak
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, "instance", "app.db")
@@ -79,12 +93,15 @@ def dashboard():
         dayplan_id=plan.id
     ).all() if plan else []
 
+    today_score = sum(t.points for t in tasks if t.status == "completed")
+
     # ---------- FRIENDS ----------
     friends_data = []
     friends = Friend.query.filter_by(user_id=current_user.id).all()
 
     for f in friends:
         friend_user = User.query.get(f.friend_id)
+
         friend_plan = DayPlan.query.filter_by(
             user_id=friend_user.id,
             date=today
@@ -94,7 +111,9 @@ def dashboard():
             dayplan_id=friend_plan.id
         ).all() if friend_plan else []
 
-        friends_data.append((friend_user, friend_tasks))
+        friend_streak = calculate_streak(friend_user.id)
+
+        friends_data.append((friend_user, friend_tasks, friend_streak))
 
     # ---------- YESTERDAY SUMMARY ----------
     yesterday = today - timedelta(days=1)
@@ -121,7 +140,38 @@ def dashboard():
             "saved": planned_time - actual_time
         }
 
-    locked = is_plan_locked()
+    # ---------- HEATMAP ----------
+    heatmap = []
+    for i in range(30):
+        d = today - timedelta(days=i)
+        p = DayPlan.query.filter_by(user_id=current_user.id, date=d).first()
+        heatmap.append(p.final_score if p else 0)
+
+    heatmap.reverse()
+
+    my_streak = calculate_streak(current_user.id)
+
+    locked = is_plan_locked(today + timedelta(days=1))
+    leaderboard = []
+
+    # You
+    leaderboard.append({
+        "name": current_user.username,
+        "streak": my_streak,
+        "score": today_score
+    })
+
+    # Friends
+    for friend_user, friend_tasks, friend_streak in friends_data:
+        friend_score = sum(t.points for t in friend_tasks if t.status == "completed")
+        leaderboard.append({
+            "name": friend_user.username,
+            "streak": friend_streak,
+            "score": friend_score
+        })
+
+    leaderboard.sort(key=lambda x: (x["streak"], x["score"]), reverse=True)
+
 
     return render_template(
         'dashboard.html',
@@ -129,16 +179,20 @@ def dashboard():
         friends_data=friends_data,
         plan_exists=bool(plan),
         locked=locked,
-        summary=summary
+        summary=summary,
+        today_score=today_score,
+        heatmap=heatmap,
+        my_streak=my_streak,
+        leaderboard=leaderboard
     )
-
 
 # ---------------- PLAN DAY ----------------
 @app.route('/plan', methods=['GET', 'POST'])
 @login_required
 def plan_day():
     if request.method == 'POST':
-        if is_plan_locked():
+        plan_date = date.today() + timedelta(days=1)
+        if is_plan_locked(plan_date):
             return jsonify({"error": "Planning is locked for today"})
 
         if DayPlan.query.filter_by(
@@ -146,7 +200,6 @@ def plan_day():
         date=date.today()
         ).first():
             return jsonify({"error": "Plan already exists"})
-
 
         plan_date = date.today() + timedelta(days=1)
         plan = DayPlan(user_id=current_user.id, date=plan_date)
@@ -245,6 +298,95 @@ def delete_task(id):
     db.session.delete(task)
     db.session.commit()
     return jsonify(ok=True)
+
+@app.route('/task/cancel/<int:id>', methods=['POST'])
+@login_required
+def cancel_task(id):
+    task = Task.query.get_or_404(id)
+    task.status = "cancelled"
+    task.cancel_reason = request.json.get("reason")
+    task.cancel_comment = request.json.get("comment")
+    db.session.commit()
+    return jsonify(ok=True)
+
+@app.route('/task/incomplete/<int:id>', methods=['POST'])
+@login_required
+def incomplete_task(id):
+    task = Task.query.get_or_404(id)
+    task.status = "incomplete"
+    task.incomplete_reason = request.json.get("reason")
+    db.session.commit()
+    return jsonify(ok=True)
+
+@app.route('/history')
+@login_required
+def history():
+    date_str = request.args.get("date")
+    selected = date.fromisoformat(date_str) if date_str else date.today()
+
+    plan = DayPlan.query.filter_by(user_id=current_user.id, date=selected).first()
+    tasks = Task.query.filter_by(dayplan_id=plan.id).all() if plan else []
+
+    return render_template("history.html", tasks=tasks, selected=selected)
+
+@app.route('/analytics')
+@login_required
+def analytics():
+    today = date.today()
+    week_start = today - timedelta(days=7)
+    month_start = today - timedelta(days=30)
+
+    def stats(start):
+        plans = DayPlan.query.filter(
+            DayPlan.user_id == current_user.id,
+            DayPlan.date >= start
+        ).all()
+
+        total = len(plans)
+        completed = len([p for p in plans if p.final_score >= 70])
+        avg = int(sum(p.final_score for p in plans) / total) if total else 0
+
+        return total, completed, avg
+
+    week = stats(week_start)
+    month = stats(month_start)
+
+    return render_template(
+        "analytics.html",
+        week=week,
+        month=month
+    )
+
+@app.route('/export')
+@login_required
+def export():
+    period = request.args.get("period", "day")
+    today = date.today()
+
+    if period == "week":
+        start = today - timedelta(days=7)
+    elif period == "month":
+        start = today - timedelta(days=30)
+    elif period == "year":
+        start = today - timedelta(days=365)
+    else:
+        start = today
+
+    plans = DayPlan.query.filter(
+        DayPlan.user_id == current_user.id,
+        DayPlan.date >= start
+    ).all()
+
+    def generate():
+        yield "date,score\n"
+        for p in plans:
+            yield f"{p.date},{p.final_score}\n"
+
+    return Response(
+        generate(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={period}.csv"}
+    )
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':

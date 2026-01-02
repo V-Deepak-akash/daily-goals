@@ -3,10 +3,35 @@
 
 <head>
   <link rel="stylesheet" href="/static/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 
 <body>
+
   <h2>Hi {{ current_user.username }} 👋</h2>
+  <p>🔥 Streak: {{ my_streak }} days</p>
+
+  <div class="score-ring">
+    <svg width="140" height="140">
+      <circle cx="70" cy="70" r="60" class="bg" />
+      <circle cx="70" cy="70" r="60" class="progress"
+        style="stroke-dashoffset: {{ 377 - (today_score / 100) * 377 }}" />
+    </svg>
+    <div class="score-text">{{ today_score }}%</div>
+  </div>
+
+  <h3>Last 30 Days</h3>
+  <div class="heatmap">
+    {% for score in heatmap %}
+    <div class="day level-{{ score // 20 }}"></div>
+    {% endfor %}
+  </div>
+
+  <div style="margin: 10px 0;">
+    <a href="/history">
+      <button>📅 History & Replay</button>
+    </a>
+  </div>
 
   <h2>Today's Plan</h2>
 
@@ -19,32 +44,31 @@
   <p>⏳ Planning is locked for today</p>
   {% endif %}
 
+  <!--
   <h3>Timeline</h3>
+
 
   <div class="timeline">
     {% for task in tasks %}
-    <div class="timeline-task
-      {% if task.status == 'completed' %}done
-      {% elif task.status == 'active' %}active
-      {% else %}planned{% endif %}
-    " style="
-      top: {{ (task.expected_start.hour * 60 + task.expected_start.minute) / 1440 * 100 }}%;
-      height: {{ ((task.expected_end.hour * 60 + task.expected_end.minute)
-                 - (task.expected_start.hour * 60 + task.expected_start.minute))
-                 / 1440 * 100 }}%;
-    ">
-      <strong>{{ task.title }}</strong><br>
-      <small>
-        {{ task.expected_start.strftime('%H:%M') }}
-        –
-        {{ task.expected_end.strftime('%H:%M') }}
-      </small>
+    {% set planned_start = (task.expected_start.hour * 60 + task.expected_start.minute) %}
+    {% set planned_end = (task.expected_end.hour * 60 + task.expected_end.minute) %}
+    {% set planned_height = (planned_end - planned_start) / 1440 * 100 %}
+    {% set planned_top = planned_start / 1440 * 100 %}
+
+    <div class="timeline-task planned" style="top: {{ planned_top }}%; height: {{ planned_height }}%;">
+      <strong>{{ task.title }}</strong>
+
+      {% if task.actual_start and task.actual_end %}
+      {% set actual_start = (task.actual_start.hour * 60 + task.actual_start.minute) %}
+      {% set actual_end = (task.actual_end.hour * 60 + task.actual_end.minute) %}
+      {% set actual_height = (actual_end - actual_start) / (planned_end - planned_start) * 100 %}
+
+      <div class="actual-bar" style="height: {{ actual_height }}%;"></div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
-
-
-
+-->
   {% for task in tasks %}
   <div class="task">
     <h3>{{ task.title }}</h3>
@@ -57,12 +81,23 @@
 
 
     {% if task.status == 'pending' %}
-    <button onclick="startTask({{ task.id }})">Start</button>
+    <button onclick="openStart({{ task.id }})">Start</button>
+    <button onclick="openCancel({{ task.id }})">Cancel</button>
+
     {% elif task.status == 'active' %}
-    <button onclick="completeTask({{ task.id }})">Complete</button>
-    {% else %}
-    <span>Done ✔</span>
+    <button onclick="openComplete({{ task.id }})">Complete</button>
+    <button onclick="openIncomplete({{ task.id }})">Incomplete</button>
+
+    {% elif task.status == 'completed' %}
+    <span>✅ Completed</span>
+
+    {% elif task.status == 'cancelled' %}
+    <span>❌ Cancelled</span>
+
+    {% elif task.status == 'incomplete' %}
+    <span>⚠ Incomplete</span>
     {% endif %}
+
   </div>
   {% endfor %}
 
@@ -88,8 +123,9 @@
 
   <h3>Friend Progress</h3>
 
-  {% for friend, tasks in friends_data %}
-  <h4>{{ friend.username }}</h4>
+  {% for friend, tasks, streak in friends_data %}
+  <h4>{{ friend.username }} 🔥 {{ streak }} days</h4>
+
   {% if tasks %}
   {% for t in tasks %}
   <div class="task">
@@ -100,13 +136,92 @@
       –
       {{ t.expected_end.strftime('%H:%M') }}
     </small>
-
   </div>
   {% endfor %}
   {% else %}
   <p>No plan today</p>
   {% endif %}
   {% endfor %}
+
+  <hr>
+  <h3>🏆 Leaderboard</h3>
+
+  <div class="leaderboard">
+    {% for user in leaderboard %}
+    <div class="leaderboard-row">
+      <strong>{{ loop.index }}.</strong>
+      {{ user.name }}
+      <span>🔥 {{ user.streak }}</span>
+      <span>⭐ {{ user.score }}%</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!--<div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="modal-title"></h3>
+
+      <input id="modal-time" type="time" class="hidden">
+
+      <select id="modal-reason" class="hidden">
+        <option value="">Select reason</option>
+        <option>Urgent work</option>
+        <option>Low energy</option>
+        <option>Overestimated time</option>
+        <option>External interruption</option>
+      </select>
+
+      <textarea id="modal-comment" placeholder="Optional comment" class="hidden"></textarea>
+
+      <button id="modal-confirm">Confirm</button>
+      <button onclick="closeModal()">Cancel</button>
+    </div>
+  </div> -->
+
+  <div id="startModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Start Task</h3>
+      <input type="time" id="startTime">
+      <button onclick="confirmStart()">Start</button>
+      <button onclick="closeAll()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="completeModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Complete Task</h3>
+      <input type="time" id="completeTime">
+      <button onclick="confirmComplete()">Complete</button>
+      <button onclick="closeAll()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="incompleteModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Mark Incomplete</h3>
+      <select id="incompleteReason">
+        <option>Ran out of time</option>
+        <option>Energy drop</option>
+        <option>Task too large</option>
+      </select>
+      <button onclick="confirmIncomplete()">Confirm</button>
+      <button onclick="closeAll()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="cancelModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Cancel Task</h3>
+      <select id="cancelReason">
+        <option>Urgent work</option>
+        <option>Unexpected interruption</option>
+        <option>No longer relevant</option>
+      </select>
+      <textarea id="cancelComment" placeholder="What happened?"></textarea>
+      <button onclick="confirmCancel()">Cancel Task</button>
+      <button onclick="closeAll()">Back</button>
+    </div>
+  </div>
 
   <script src="/static/js/app.js"></script>
 </body>

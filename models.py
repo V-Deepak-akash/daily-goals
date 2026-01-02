@@ -40,6 +40,14 @@ class Task(db.Model):
     points = db.Column(db.Integer)
     status = db.Column(db.String(20), default="pending")
 
+    status = db.Column(db.String(20), default="pending")
+
+    cancel_reason = db.Column(db.String(1000))
+    cancel_comment = db.Column(db.Text)
+
+    incomplete_reason = db.Column(db.String(1000))
+
+
 class Friend(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))

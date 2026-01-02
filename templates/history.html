@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <title>History</title>
+</head>
+
+<body>
+
+    <h2>📅 History & Replay</h2>
+
+    <!-- Date Selector -->
+    <div class="history-controls">
+        <input type="date" value="{{ selected }}" onchange="location='?date='+this.value">
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+        <button onclick="filterTasks('all')">All</button>
+        <button onclick="filterTasks('completed')">Completed</button>
+        <button onclick="filterTasks('cancelled')">Cancelled</button>
+        <button onclick="filterTasks('incomplete')">Incomplete</button>
+    </div>
+
+    <hr>
+
+    <!-- Tasks -->
+    <div id="historyTasks">
+        {% if tasks %}
+        {% for t in tasks %}
+        <div class="task history-task" data-status="{{ t.status }}">
+
+            <div class="task-header">
+                <strong>{{ t.title }}</strong>
+                <span class="badge {{ t.status }}">{{ t.status }}</span>
+            </div>
+
+            <p>{{ t.description }}</p>
+
+            <small>
+                🕒 Planned:
+                {{ t.expected_start.strftime('%H:%M') }}
+                –
+                {{ t.expected_end.strftime('%H:%M') }}
+            </small>
+
+            {% if t.actual_start and t.actual_end %}
+            <small>
+                ⏱ Actual:
+                {{ t.actual_start.strftime('%H:%M') }}
+                –
+                {{ t.actual_end.strftime('%H:%M') }}
+            </small>
+            {% endif %}
+
+            {% if t.cancel_comment %}
+            <p class="note">📝 {{ t.cancel_comment }}</p>
+            {% endif %}
+
+            {% if t.incomplete_reason %}
+            <p class="note">⚠ {{ t.incomplete_reason }}</p>
+            {% endif %}
+
+        </div>
+        {% endfor %}
+        {% else %}
+        <p>No data for this date.</p>
+        {% endif %}
+    </div>
+
+    <hr>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin:10px 0;">
+        <a href="/analytics"><button>📊 Analytics</button></a>
+    </div>
+
+
+    <script>
+        function filterTasks(status) {
+            document.querySelectorAll('.history-task').forEach(task => {
+                if (status === 'all' || task.dataset.status === status) {
+                    task.style.display = 'block';
+                } else {
+                    task.style.display = 'none';
+                }
+            });
+        }
+    </script>
+
+</body>
+
+</html>

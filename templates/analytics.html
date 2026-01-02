@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <title>Analytics</title>
+</head>
+
+<body>
+
+<h2>📊 Analytics Overview</h2>
+<p class="muted">Understand your consistency and progress over time</p>
+
+<!-- WEEKLY -->
+<div class="analytics-card">
+  <h3>🗓 Last 7 Days</h3>
+
+  <div class="analytics-grid">
+    <div class="metric">
+      <span class="metric-value">{{ week[0] }}</span>
+      <span class="metric-label">Total Days</span>
+    </div>
+
+    <div class="metric">
+      <span class="metric-value">{{ week[1] }}</span>
+      <span class="metric-label">Successful Days</span>
+    </div>
+
+    <div class="metric">
+      <span class="metric-value">{{ week[2] }}%</span>
+      <span class="metric-label">Avg Score</span>
+    </div>
+  </div>
+</div>
+
+<!-- MONTHLY -->
+<div class="analytics-card">
+  <h3>📆 Last 30 Days</h3>
+
+  <div class="analytics-grid">
+    <div class="metric">
+      <span class="metric-value">{{ month[0] }}</span>
+      <span class="metric-label">Total Days</span>
+    </div>
+
+    <div class="metric">
+      <span class="metric-value">{{ month[1] }}</span>
+      <span class="metric-label">Successful Days</span>
+    </div>
+
+    <div class="metric">
+      <span class="metric-value">{{ month[2] }}%</span>
+      <span class="metric-label">Avg Score</span>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- EXPORT -->
+<h3>⬇ Export Your Data</h3>
+
+<div class="export-box">
+  <a href="/export?period=day"><button>Export Day</button></a>
+  <a href="/export?period=week"><button>Export Week</button></a>
+  <a href="/export?period=month"><button>Export Month</button></a>
+  <a href="/export?period=year"><button>Export Year</button></a>
+</div>
+
+<hr>
+
+<a href="/"><button>⬅ Back to Dashboard</button></a>
+
+</body>
+</html>
