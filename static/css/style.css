@@ -346,3 +346,34 @@ small {
     grid-template-columns: 1fr;
   }
 }
+
+.leaderboard-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.leaderboard-row-advanced {
+  background: #1c1c1c;
+  padding: 14px;
+  border-radius: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.leaderboard-row-advanced.winner {
+  border: 2px solid gold;
+  background: linear-gradient(135deg, #2a2a2a, #3a2f00);
+}
+
+.leaderboard-metrics span {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+.badge-text {
+  font-size: 12px;
+  color: #ffd54f;
+}

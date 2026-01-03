@@ -22,6 +22,27 @@ def calculate_streak(user_id):
 
     return streak
 
+def get_week_range(ref=None):
+    ref = ref or date.today()
+    start = ref - timedelta(days=ref.weekday())  # Monday
+    end = start + timedelta(days=6)
+    return start, end
+
+def weekly_stats(user_id, start, end):
+    plans = DayPlan.query.filter(
+        DayPlan.user_id == user_id,
+        DayPlan.date >= start,
+        DayPlan.date <= end
+    ).all()
+
+    total_score = sum(p.final_score for p in plans)
+    completed_days = len([p for p in plans if p.final_score >= 70])
+
+    return {
+        "score": total_score,
+        "days": completed_days
+    }
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, "instance", "app.db")
 
@@ -386,6 +407,65 @@ def export():
         generate(),
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment; filename={period}.csv"}
+    )
+
+@app.route('/leaderboard')
+@login_required
+def leaderboard():
+    start, end = get_week_range()
+
+    users = {current_user.id: current_user.username}
+
+    friends = Friend.query.filter_by(user_id=current_user.id).all()
+    for f in friends:
+        u = User.query.get(f.friend_id)
+        users[u.id] = u.username
+
+    board = []
+
+    for uid, name in users.items():
+        stats = weekly_stats(uid, start, end)
+        streak = calculate_streak(uid)
+
+        board.append({
+            "name": name,
+            "score": stats["score"],
+            "days": stats["days"],
+            "streak": streak
+        })
+
+    # 🔹 SORT LEADERBOARD
+    board.sort(
+        key=lambda x: (x["score"], x["days"], x["streak"]),
+        reverse=True
+    )
+
+    # ============================
+    # 🏅 BADGES ENGINE (PLACE HERE)
+    # ============================
+
+    if board:
+        # 🥇 Weekly Champion
+        board[0]["badge"] = "🥇 Weekly Champion"
+
+        # 🔥 Consistency King (highest streak)
+        max_streak = max(b["streak"] for b in board)
+        for b in board:
+            if b["streak"] == max_streak and max_streak > 0:
+                b["badge"] = b.get("badge", "") + " 🔥 Consistency King"
+
+        # 🎯 Finisher (5+ good days)
+        for b in board:
+            if b["days"] >= 5:
+                b["badge"] = b.get("badge", "") + " 🎯 Finisher"
+
+    # ============================
+
+    return render_template(
+        "leaderboard.html",
+        board=board,
+        start=start,
+        end=end
     )
 
 # ---------------- RUN ----------------

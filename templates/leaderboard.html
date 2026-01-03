@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <title>Leaderboard</title>
+</head>
+
+<body>
+
+    <h2>🏆 Weekly Leaderboard</h2>
+    <p class="muted">{{ start }} → {{ end }}</p>
+
+    <div class="leaderboard-advanced">
+        {% for u in board %}
+        <div class="leaderboard-row-advanced {% if loop.index == 1 %}winner{% endif %}">
+            <div>
+                <strong>#{{ loop.index }} {{ u.name }}</strong>
+                {% if u.badge %}
+                <div class="badge-text">{{ u.badge }}</div>
+                {% endif %}
+            </div>
+
+            <div class="leaderboard-metrics">
+                <span>⭐ {{ u.score }}</span>
+                <span>📅 {{ u.days }} days</span>
+                <span>🔥 {{ u.streak }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <hr>
+
+    <a href="/"><button>⬅ Back to Dashboard</button></a>
+
+</body>
+
+</html>
