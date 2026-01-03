@@ -9,8 +9,30 @@
 
 <body>
 
-    <h2>🏆 Weekly Leaderboard</h2>
+    <h2>
+        🏆
+        {% if period == "day" %}Daily
+        {% elif period == "month" %}Monthly
+        {% else %}Weekly
+        {% endif %}
+        Leaderboard
+    </h2>
+
     <p class="muted">{{ start }} → {{ end }}</p>
+
+    <a href="/leaderboard?scope=friends&period=day"><button>Daily</button></a>
+    <a href="/leaderboard?scope=friends&period=week"><button>Weekly</button></a>
+    <a href="/leaderboard?scope=friends&period=month"><button>Monthly</button></a>
+
+    <a href="/leaderboard?scope=global&period=day"><button>Global Daily</button></a>
+    <a href="/leaderboard?scope=global&period=week"><button>Global Weekly</button></a>
+    <a href="/leaderboard?scope=global&period=month"><button>Global Monthly</button></a>
+
+
+    <div style="display:flex; gap:10px;">
+        <a href="/leaderboard?scope=friends"><button>👥 Friends</button></a>
+        <a href="/leaderboard?scope=global"><button>🌍 Global</button></a>
+    </div>
 
     <div class="leaderboard-advanced">
         {% for u in board %}
@@ -32,9 +54,34 @@
         {% endfor %}
     </div>
 
+    {% if my_entry and my_entry.position > 100 %}
+    <div class="leaderboard-row-advanced me">
+        <strong>You — Rank #{{ my_entry.position }}</strong>
+        <span>⭐ {{ my_entry.score }}</span>
+        <span>🔥 {{ my_entry.streak }}</span>
+    </div>
+    {% endif %}
+
+    <div class="leaderboard-list">
+        {% for u in board %}
+        <div class="leaderboard-row {% if u.is_me %}me{% endif %}">
+            #{{ u.position }} {{ u.name }}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if my_entry %}
+    <div class="leaderboard-row me locked">
+        You — Rank #{{ my_entry.position }}
+        ⭐ {{ my_entry.score }}
+    </div>
+    {% endif %}
+
     <hr>
 
     <a href="/"><button>⬅ Back to Dashboard</button></a>
+
+    <script src="/static/js/app.js"></script>
 
 </body>
 

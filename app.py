@@ -1,6 +1,6 @@
 from flask import Flask, render_template, redirect, request, jsonify, url_for
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from models import db, User, DayPlan, Task, Friend
+from models import Notification, db, User, DayPlan, Task, Friend
 from datetime import datetime, date, time as dtime, timedelta
 import os
 import csv
@@ -144,7 +144,11 @@ def dashboard():
 
     # ---------- FRIENDS ----------
     friends_data = []
-    friends = Friend.query.filter_by(user_id=current_user.id).all()
+    friends = Friend.query.filter_by(
+        user_id=current_user.id,
+        status="accepted"
+    ).all()
+
 
     for f in friends:
         friend_user = User.query.get(f.friend_id)
@@ -160,7 +164,7 @@ def dashboard():
 
         friend_streak = calculate_streak(friend_user.id)
 
-        friends_data.append((friend_user, friend_tasks, friend_streak))
+        friends_data.append((f, friend_user, friend_tasks, friend_streak))
 
     # ---------- YESTERDAY SUMMARY ----------
     yesterday = today - timedelta(days=1)
@@ -209,7 +213,7 @@ def dashboard():
     })
 
     # Friends
-    for friend_user, friend_tasks, friend_streak in friends_data:
+    for rel, friend_user, friend_tasks, friend_streak in friends_data:
         friend_score = sum(t.points for t in friend_tasks if t.status == "completed")
         leaderboard.append({
             "name": friend_user.username,
@@ -217,10 +221,15 @@ def dashboard():
             "score": friend_score
         })
 
+
     leaderboard.sort(key=lambda x: (x["streak"], x["score"]), reverse=True)
 
     xp = calculate_xp(current_user.id)
     rank = get_rank(xp)
+    notifications = Notification.query.filter_by(
+        user_id=current_user.id,
+        is_read=False
+    ).all()
 
     return render_template(
         'dashboard.html',
@@ -234,7 +243,8 @@ def dashboard():
         my_streak=my_streak,
         leaderboard=leaderboard,
         xp=xp,
-        rank=rank
+        rank=rank,
+        notifications=notifications
     )
 
 # ---------------- PLAN DAY ----------------
@@ -321,24 +331,39 @@ def complete_task(id):
 @login_required
 def add_friend():
     username = request.form['username']
+    receiver = User.query.filter_by(username=username).first()
 
-    friend = User.query.filter_by(username=username).first()
-    if not friend or friend.id == current_user.id:
-        return redirect('/')
+    if not receiver or receiver.id == current_user.id:
+        return redirect(url_for("dashboard"))
 
-    exists = Friend.query.filter_by(
+    existing = Friend.query.filter_by(
         user_id=current_user.id,
-        friend_id=friend.id
+        friend_id=receiver.id
     ).first()
 
-    if not exists:
-        db.session.add(Friend(
-            user_id=current_user.id,
-            friend_id=friend.id
-        ))
-        db.session.commit()
+    if existing:
+        if existing.status == "pending":
+            return redirect(url_for("dashboard", msg="requested"))
+        if existing.status == "accepted":
+            return redirect(url_for("dashboard", msg="following"))
 
-    return redirect('/')
+    friend_req = Friend(
+        user_id=current_user.id,
+        friend_id=receiver.id,
+        status="pending"
+    )
+    db.session.add(friend_req)
+    db.session.flush()
+
+    db.session.add(Notification(
+        user_id=receiver.id,
+        message=f"{current_user.username} sent you a friend request",
+        type="friend_request",
+        related_id=friend_req.id
+    ))
+
+    db.session.commit()
+    return redirect(url_for("dashboard", msg="sent"))
 
 @app.route('/task/delete/<int:id>', methods=['POST'])
 @login_required
@@ -442,26 +467,44 @@ def export():
 @app.route('/leaderboard')
 @login_required
 def leaderboard():
-    start, end = get_week_range()
+    scope = request.args.get("scope", "friends")
+    period = request.args.get("period", "week")
 
-    users = {current_user.id: current_user.username}
+    today = date.today()
 
-    friends = Friend.query.filter_by(user_id=current_user.id).all()
-    for f in friends:
-        u = User.query.get(f.friend_id)
-        users[u.id] = u.username
+    # ---------------- PERIOD RANGE ----------------
+    if period == "day":
+        start = end = today
+    elif period == "month":
+        start = today - timedelta(days=30)
+        end = today
+    else:  # week
+        start, end = get_week_range(today)
+
+    # ---------------- USER SCOPE ----------------
+    if scope == "global":
+        users = User.query.filter_by(show_global=True).all()
+    else:
+        friends = Friend.query.filter_by(
+            user_id=current_user.id,
+            status="accepted"
+        ).all()
+        users = [current_user] + [
+            User.query.get(f.friend_id) for f in friends
+        ]
 
     board = []
 
-    for uid, name in users.items():
-        stats = weekly_stats(uid, start, end)
-        streak = calculate_streak(uid)
-
-        xp = calculate_xp(uid)
+    # ---------------- BUILD BOARD ----------------
+    for u in users:
+        stats = weekly_stats(u.id, start, end)
+        streak = calculate_streak(u.id)
+        xp = calculate_xp(u.id)
         rank = get_rank(xp)
 
         board.append({
-            "name": name,
+            "user_id": u.id,
+            "name": u.username,
             "score": stats["score"],
             "days": stats["days"],
             "streak": streak,
@@ -469,39 +512,174 @@ def leaderboard():
             "rank": rank
         })
 
-    # 🔹 SORT LEADERBOARD
+    # ---------------- SORT ----------------
     board.sort(
         key=lambda x: (x["score"], x["days"], x["streak"]),
         reverse=True
     )
 
-    # ============================
-    # 🏅 BADGES ENGINE (PLACE HERE)
-    # ============================
+    # ---------------- POSITION & SELF ENTRY ----------------
+    my_entry = None
+    for idx, row in enumerate(board):
+        row["position"] = idx + 1
+        if row["user_id"] == current_user.id:
+            my_entry = row
 
+    # ---------------- BADGES ----------------
     if board:
-        # 🥇 Weekly Champion
-        board[0]["badge"] = "🥇 Weekly Champion"
+        if period == "day":
+            board[0]["badge"] = "🥇 Daily Champion"
+        elif period == "month":
+            board[0]["badge"] = "🏆 Monthly Champion"
+        else:
+            board[0]["badge"] = "🥇 Weekly Champion"
 
-        # 🔥 Consistency King (highest streak)
-        max_streak = max(b["streak"] for b in board)
-        for b in board:
-            if b["streak"] == max_streak and max_streak > 0:
-                b["badge"] = b.get("badge", "") + " 🔥 Consistency King"
+    # ---------------- TOP 100 LOGIC (GLOBAL ONLY) ----------------
+    if scope == "global":
+        top_100 = board[:100]
 
-        # 🎯 Finisher (5+ good days)
-        for b in board:
-            if b["days"] >= 5:
-                b["badge"] = b.get("badge", "") + " 🎯 Finisher"
+        # user NOT in top 100 → show separately
+        if my_entry and my_entry["position"] > 100:
+            return render_template(
+                "leaderboard.html",
+                board=top_100,
+                my_entry=my_entry,
+                start=start,
+                end=end,
+                scope=scope,
+                period=period
+            )
 
-    # ============================
+        # user IN top 100 → mark for sticky UX
+        for row in top_100:
+            if row["user_id"] == current_user.id:
+                row["is_me"] = True
 
+        return render_template(
+            "leaderboard.html",
+            board=top_100,
+            start=start,
+            end=end,
+            scope=scope,
+            period=period
+        )
+
+    # ---------------- FRIENDS LEADERBOARD ----------------
     return render_template(
         "leaderboard.html",
         board=board,
         start=start,
-        end=end
+        end=end,
+        scope=scope,
+        period=period
     )
+
+@app.route('/friend/accept/<int:id>', methods=['POST'])
+@login_required
+def accept_friend(id):
+    req = Friend.query.get_or_404(id)
+
+    if req.friend_id != current_user.id:
+        return jsonify(error="Unauthorized")
+
+    req.status = "accepted"
+
+    # ✅ mark notification as read
+    Notification.query.filter_by(
+        related_id=req.id,
+        user_id=current_user.id
+    ).update({"is_read": True})
+
+    db.session.commit()
+    return jsonify(ok=True)
+
+@app.route('/friend/decline/<int:id>', methods=['POST'])
+@login_required
+def decline_friend(id):
+    req = Friend.query.get_or_404(id)
+
+    if req.friend_id != current_user.id:
+        return jsonify(error="Unauthorized")
+
+    # delete request
+    db.session.delete(req)
+
+    # ✅ mark notification as read
+    Notification.query.filter_by(
+        related_id=id,
+        user_id=current_user.id
+    ).update({"is_read": True})
+
+    db.session.commit()
+    return jsonify(ok=True)
+
+@app.route('/friend/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_friend(id):
+    f = Friend.query.get_or_404(id)
+
+    if f.user_id != current_user.id:
+        return jsonify(error="Unauthorized")
+
+    db.session.delete(f)
+    db.session.commit()
+    return jsonify(ok=True)
+
+@app.route('/privacy/global', methods=['POST'])
+@login_required
+def toggle_global_privacy():
+    data = request.get_json()
+    value = data.get("show_global")
+
+    if value is None:
+        return jsonify(error="Invalid request"), 400
+
+    current_user.show_global = bool(value)
+    db.session.commit()
+
+    return jsonify(ok=True, show_global=current_user.show_global)
+
+@app.route('/followers')
+@login_required
+def followers():
+    # users who follow ME
+    relations = Friend.query.filter_by(
+        friend_id=current_user.id,
+        status="accepted"
+    ).all()
+
+    followers = []
+    for rel in relations:
+        user = User.query.get(rel.user_id)
+
+        # check if I also follow them
+        following_back = Friend.query.filter_by(
+            user_id=current_user.id,
+            friend_id=user.id,
+            status="accepted"
+        ).first() is not None
+
+        followers.append({
+            "rel_id": rel.id,
+            "id": user.id,
+            "username": user.username,
+            "following_back": following_back
+        })
+
+    return jsonify(followers)
+
+@app.route('/follower/remove/<int:rel_id>', methods=['POST'])
+@login_required
+def remove_follower(rel_id):
+    rel = Friend.query.get_or_404(rel_id)
+
+    # only YOU can remove someone who follows YOU
+    if rel.friend_id != current_user.id:
+        return jsonify(error="Unauthorized"), 403
+
+    db.session.delete(rel)
+    db.session.commit()
+    return jsonify(ok=True)
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':

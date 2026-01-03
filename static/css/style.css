@@ -377,3 +377,31 @@ small {
   font-size: 12px;
   color: #ffd54f;
 }
+
+.privacy-toggle {
+  margin: 10px 0;
+  padding: 8px;
+  background: #1c1c1c;
+  border-radius: 8px;
+}
+
+.leaderboard-row.me {
+  position: sticky;
+  bottom: 0;
+  background: #1e1e1e;
+  border-top: 2px solid #4caf50;
+  z-index: 5;
+}
+
+.leaderboard-row.locked {
+  position: sticky;
+  bottom: 0;
+  background: #111;
+  border-top: 2px dashed #ff9800;
+}
+
+.leaderboard-row.me.pinned {
+  position: sticky;
+  top: 0;
+  background: #000;
+}

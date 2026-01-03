@@ -8,10 +8,38 @@
 
 <body>
 
+  <div class="notif-icon" onclick="openNotifications()">
+    🔔 {% if notifications|length %}<span class="dot"></span>{% endif %}
+  </div>
+
   <h2>Hi {{ current_user.username }} 👋</h2>
   <p>🔥 Streak: {{ my_streak }} days</p>
   <p>🎮 Rank: <strong>{{ rank }}</strong></p>
   <p>⭐ XP: {{ xp }}</p>
+
+  <div class="privacy-toggle">
+    <label>
+      <input type="checkbox" id="globalToggle" {% if current_user.show_global %}checked{% endif %}
+        onchange="toggleGlobalPrivacy(this)">
+      🌍 Show me in Global Leaderboard
+    </label>
+  </div>
+
+
+  {% if request.args.get("msg") %}
+  <div id="msgModal" class="modal">
+    <div class="modal-box">
+      {% if request.args.get("msg") == "requested" %}
+      <p>⏳ You already sent a request</p>
+      {% elif request.args.get("msg") == "following" %}
+      <p>✔ You are already following this user</p>
+      {% elif request.args.get("msg") == "sent" %}
+      <p>📨 Friend request sent</p>
+      {% endif %}
+      <button onclick="closeMsg()">OK</button>
+    </div>
+  </div>
+  {% endif %}
 
 
   <div class="score-ring">
@@ -124,12 +152,17 @@
     <button>Add</button>
   </form>
 
+  <button onclick="openFollowers()">👥 Followers</button>
+
   <hr>
 
   <h3>Friend Progress</h3>
 
-  {% for friend, tasks, streak in friends_data %}
-  <h4>{{ friend.username }} 🔥 {{ streak }} days</h4>
+  {% for rel, friend, tasks, streak in friends_data %}
+  <h4>
+    {{ friend.username }} 🔥 {{ streak }} days
+    <button onclick="openRemoveFriend({{ rel.id }})">🗑</button>
+  </h4>
 
   {% if tasks %}
   {% for t in tasks %}
@@ -146,7 +179,9 @@
   {% else %}
   <p>No plan today</p>
   {% endif %}
+
   {% endfor %}
+
 
   <hr>
   <h3>🏆 Leaderboard</h3>
@@ -161,6 +196,10 @@
     </div>
     {% endfor %}
   </div>
+
+  {% if error %}
+  <p style="color:#ff5252;">{{ error }}</p>
+  {% endif %}
 
   <!--<div id="modal" class="modal hidden">
     <div class="modal-box">
@@ -225,6 +264,40 @@
       <textarea id="cancelComment" placeholder="What happened?"></textarea>
       <button onclick="confirmCancel()">Cancel Task</button>
       <button onclick="closeAll()">Back</button>
+    </div>
+  </div>
+
+  <div id="removeFriendModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Remove Friend?</h3>
+      <p>This will remove them from your friend list.</p>
+      <button onclick="confirmRemoveFriend()">Remove</button>
+      <button onclick="closeAll()">Cancel</button>
+    </div>
+  </div>
+  <div id="notifModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Notifications</h3>
+
+      {% for n in notifications %}
+      <div class="task">
+        {{ n.message }}
+        <button onclick="acceptRequest({{ n.related_id }})">✔</button>
+        <button onclick="declineRequest({{ n.related_id }})">❌</button>
+      </div>
+      {% else %}
+      <p>No notifications</p>
+      {% endfor %}
+
+      <button onclick="closeAll()">Close</button>
+    </div>
+  </div>
+
+  <div id="followersModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Followers</h3>
+      <div id="followersList"></div>
+      <button onclick="closeAll()">Close</button>
     </div>
   </div>
 
