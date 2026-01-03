@@ -43,6 +43,32 @@ def weekly_stats(user_id, start, end):
         "days": completed_days
     }
 
+def calculate_xp(user_id):
+    plans = DayPlan.query.filter_by(user_id=user_id).all()
+
+    xp = 0
+    for p in plans:
+        xp += sum(t.points for t in Task.query.filter_by(
+            dayplan_id=p.id, status="completed"
+        ).all()) // 10 * 10  # task XP
+
+        if p.final_score >= 70:
+            xp += 50
+
+    xp += calculate_streak(user_id) * 5
+    return xp
+
+def get_rank(xp):
+    if xp >= 3000:
+        return "👑 Legend"
+    if xp >= 1500:
+        return "🔥 Elite"
+    if xp >= 700:
+        return "🧠 Strategist"
+    if xp >= 300:
+        return "⚔️ Warrior"
+    return "🪴 Beginner"
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, "instance", "app.db")
 
@@ -193,6 +219,8 @@ def dashboard():
 
     leaderboard.sort(key=lambda x: (x["streak"], x["score"]), reverse=True)
 
+    xp = calculate_xp(current_user.id)
+    rank = get_rank(xp)
 
     return render_template(
         'dashboard.html',
@@ -204,7 +232,9 @@ def dashboard():
         today_score=today_score,
         heatmap=heatmap,
         my_streak=my_streak,
-        leaderboard=leaderboard
+        leaderboard=leaderboard,
+        xp=xp,
+        rank=rank
     )
 
 # ---------------- PLAN DAY ----------------
@@ -427,11 +457,16 @@ def leaderboard():
         stats = weekly_stats(uid, start, end)
         streak = calculate_streak(uid)
 
+        xp = calculate_xp(uid)
+        rank = get_rank(xp)
+
         board.append({
             "name": name,
             "score": stats["score"],
             "days": stats["days"],
-            "streak": streak
+            "streak": streak,
+            "xp": xp,
+            "rank": rank
         })
 
     # 🔹 SORT LEADERBOARD
