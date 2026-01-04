@@ -685,6 +685,10 @@ def remove_follower(rel_id):
 def sw():
     return app.send_static_file("service-worker.js")
 
+@app.route("/manifest.json")
+def manifest():
+    return app.send_static_file("manifest.json")
+
 # ---------------- RUN ----------------
 if __name__ == '__main__':
     app.run(debug=True)
