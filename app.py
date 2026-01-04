@@ -681,6 +681,10 @@ def remove_follower(rel_id):
     db.session.commit()
     return jsonify(ok=True)
 
+@app.route("/service-worker.js")
+def sw():
+    return app.send_static_file("service-worker.js")
+
 # ---------------- RUN ----------------
 if __name__ == '__main__':
     app.run(debug=True)
