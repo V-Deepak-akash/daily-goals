@@ -147,14 +147,16 @@ function confirmRemoveFollowerFinal() {
 
 const meRow = document.querySelector(".leaderboard-row.me");
 
-const observer = new IntersectionObserver(entries => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      meRow.classList.remove("locked");
-    } else {
-      meRow.classList.add("locked");
-    }
+if (meRow) {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        meRow.classList.remove("locked");
+      } else {
+        meRow.classList.add("locked");
+      }
+    });
   });
-});
 
-observer.observe(meRow);
+  observer.observe(meRow);
+}
