@@ -10,19 +10,22 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 
 <body>
 
-  <div class="notif-icon" onclick="openNotifications()">
-    🔔 {% if notifications|length %}<span class="dot"></span>{% endif %}
+  <div class="top-actions">
+    <div class="notif-icon" onclick="openNotifications()">
+      🔔 <span id="notifDot" class="{% if not notifications %}hidden{% endif %} dot"></span>
+    </div>
+    <a href="/logout" class="logout-btn">Logout</a>
   </div>
 
   <h2>Hi {{ current_user.username }} 👋</h2>
   <p>🔥 Streak: {{ my_streak }} days</p>
   <p>🎮 Rank: <strong>{{ rank }}</strong></p>
-  <p>⭐ XP: {{ xp }}</p>
+  <p>⭐ XP: <span id="xpValue">{{ xp }}</span></p>
 
   <div class="privacy-toggle">
     <label>
@@ -31,23 +34,6 @@
       🌍 Show me in Global Leaderboard
     </label>
   </div>
-
-
-  {% if request.args.get("msg") %}
-  <div id="msgModal" class="modal">
-    <div class="modal-box">
-      {% if request.args.get("msg") == "requested" %}
-      <p>⏳ You already sent a request</p>
-      {% elif request.args.get("msg") == "following" %}
-      <p>✔ You are already following this user</p>
-      {% elif request.args.get("msg") == "sent" %}
-      <p>📨 Friend request sent</p>
-      {% endif %}
-      <button onclick="closeMsg()">OK</button>
-    </div>
-  </div>
-  {% endif %}
-
 
   <div class="score-ring">
     <svg width="140" height="140">
@@ -61,11 +47,18 @@
   <h3>Last 30 Days</h3>
   <div class="heatmap">
     {% for score in heatmap %}
-    <div class="day level-{{ score // 20 }}"></div>
+    <div class="day
+      {% if score == 0 %}level-0
+      {% elif score < 40 %}level-1
+      {% elif score < 60 %}level-2
+      {% elif score < 80 %}level-3
+      {% else %}level-4
+      {% endif %}
+    "></div>
     {% endfor %}
   </div>
 
-  <a href="/leaderboard"><button>🏆 Leaderboard</button></a>
+  <a href="/leaderboard" class="btn">🏆 Leaderboard</a>
 
   <div style="margin: 10px 0;">
     <a href="/history">
@@ -110,7 +103,7 @@
   </div>
 -->
   {% for task in tasks %}
-  <div class="task">
+  <div class="task" data-task="{{ task.id }}">
     <h3>{{ task.title }}</h3>
     <p>{{ task.description }}</p>
     <small>
@@ -154,9 +147,9 @@
   <hr>
 
   <h3>Add Friend</h3>
-  <form method="POST" action="/add-friend">
-    <input name="username" placeholder="Friend username" required>
-    <button>Add</button>
+  <input id="friendUsername" placeholder="Friend username" required>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button onclick="addFriendDebounced()">Add</button>
   </form>
 
   <button onclick="openFollowers()">👥 Followers</button>
@@ -287,7 +280,7 @@
       <h3>Notifications</h3>
 
       {% for n in notifications %}
-      <div class="task">
+      <div class="task" data-notif="{{ n.related_id }}">
         {{ n.message }}
         <button onclick="acceptRequest({{ n.related_id }})">✔</button>
         <button onclick="declineRequest({{ n.related_id }})">❌</button>
@@ -309,12 +302,13 @@
   </div>
 
   <script src="/static/js/app.js"></script>
+  <!--
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
     }
   </script>
-
+  -->
 
 </body>
 

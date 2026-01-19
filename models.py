@@ -26,6 +26,7 @@ class User(UserMixin, db.Model):
 class DayPlan(db.Model):
     __tablename__ = "day_plan"
     __table_args__ = (
+        db.UniqueConstraint("user_id", "date", name="uq_user_day"),
         db.Index("idx_dayplan_user_date", "user_id", "date"),
     )
 

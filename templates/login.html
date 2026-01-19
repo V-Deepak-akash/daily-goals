@@ -2,39 +2,56 @@
 <html>
 
 <head>
-  <link rel="stylesheet" href="/static/css/style.css">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="manifest" href="/static/manifest.json">
-  <meta name="theme-color" content="#0f0f0f">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
 
   <h2 id="title">Login</h2>
+  <p id="error" style="color:red"></p>
+  
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  {% if error %}
-  <p style="color:red">{{ error }}</p>
-  {% endif %}
+  <input id="username" placeholder="Username" required>
+  <input id="password" type="password" placeholder="Password" required>
 
-  <form method="POST">
-    <input name="username" placeholder="Username" required>
-    <input name="password" type="password" placeholder="Password" required>
-    <input type="hidden" name="mode" id="mode" value="login">
-    <button type="submit" id="submitBtn">Login</button>
-  </form>
-
-  <br>
+  <button onclick="submitForm()" id="submitBtn">Login</button>
+  <br><br>
   <button onclick="switchMode()">New user?</button>
 
   <script>
+    let mode = "login";
+
     function switchMode() {
+      mode = "register";
       document.getElementById("title").innerText = "Register";
       document.getElementById("submitBtn").innerText = "Create Account";
-      document.getElementById("mode").value = "register";
+      document.getElementById("error").innerText = "";
+    }
+
+    async function submitForm() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      const formData = new FormData();
+      formData.append("username", username);
+      formData.append("password", password);
+      formData.append("mode", mode);
+
+      const res = await fetch("/login", {
+        method: "POST",
+        body: formData
+      });
+
+      if (res.redirected) {
+        window.location.href = res.url;
+        return;
+      }
+
+      const text = await res.text();
+      document.body.innerHTML = text; // re-render error page
     }
   </script>
 

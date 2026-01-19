@@ -5,6 +5,41 @@ from datetime import datetime, date, time as dtime, timedelta
 import os
 import csv
 from flask import Response
+from sqlalchemy.orm import joinedload
+from flask_migrate import Migrate
+from sqlalchemy.exc import IntegrityError
+from flask_wtf import CSRFProtect
+from sqlalchemy import func, or_
+from flask_wtf.csrf import generate_csrf
+
+def update_plan_final_score(plan_id):
+    score = db.session.query(
+        func.coalesce(func.sum(Task.points), 0)
+    ).filter(
+        Task.dayplan_id == plan_id,
+        Task.status == "completed"
+    ).scalar()
+
+    DayPlan.query.filter_by(id=plan_id).update(
+        {"final_score": score}
+    )
+
+def api_ok(**data):
+    return jsonify({"ok": True, **data})
+
+def api_error(message, status=400):
+    return jsonify({"ok": False, "error": message}), status
+
+def get_task_for_current_user(task_id):
+    return (
+        Task.query
+        .join(DayPlan)
+        .filter(
+            Task.id == task_id,
+            DayPlan.user_id == current_user.id
+        )
+        .first_or_404()
+    )
 
 def is_plan_locked(plan_date):
     return plan_date <= date.today()
@@ -74,13 +109,20 @@ DB_PATH = os.path.join(BASE_DIR, "instance", "app.db")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "dev-secret")
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+csrf = CSRFProtect(app)
+
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=generate_csrf)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    "DATABASE_URL",
+    f"sqlite:///{DB_PATH}"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-
-with app.app_context():
-    db.create_all()
+migrate = Migrate(app, db)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -90,6 +132,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ---------------- AUTH ----------------
+@csrf.exempt
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -118,6 +161,35 @@ def login():
 
     return render_template('login.html')
 
+@csrf.exempt
+@app.route('/auth/login', methods=['POST'])
+def auth_login():
+    data = request.form
+
+    user = User.query.filter_by(username=data["username"]).first()
+    if not user or not user.check_password(data["password"]):
+        return api_error("Invalid credentials", 401)
+
+    login_user(user)
+    return api_ok(xp=calculate_xp(current_user.id))
+
+@csrf.exempt
+@app.route('/auth/register', methods=['POST'])
+def auth_register():
+    data = request.get_json()
+
+    if User.query.filter_by(username=data["username"]).first():
+        return api_error("Username exists")
+
+    user = User(username=data["username"])
+    user.set_password(data["password"])
+
+    db.session.add(user)
+    db.session.commit()
+
+    login_user(user)
+    return api_ok(xp=calculate_xp(current_user.id))
+
 @app.route('/logout')
 @login_required
 def logout():
@@ -144,14 +216,20 @@ def dashboard():
 
     # ---------- FRIENDS ----------
     friends_data = []
-    friends = Friend.query.filter_by(
-        user_id=current_user.id,
-        status="accepted"
+    friends = Friend.query.filter(
+        Friend.status == "accepted",
+        or_(
+            Friend.user_id == current_user.id,
+            Friend.friend_id == current_user.id
+        )
     ).all()
 
-
     for f in friends:
-        friend_user = User.query.get(f.friend_id)
+        friend_user_id = (
+            f.friend_id if f.user_id == current_user.id else f.user_id
+        )
+        friend_user = User.query.get(friend_user_id)
+
 
         friend_plan = DayPlan.query.filter_by(
             user_id=friend_user.id,
@@ -247,44 +325,166 @@ def dashboard():
         notifications=notifications
     )
 
+@app.route("/api/dashboard")
+@login_required
+def api_dashboard():
+    today = date.today()
+
+    # ---------- TODAY PLAN ----------
+    plan = DayPlan.query.filter_by(
+        user_id=current_user.id,
+        date=today
+    ).first()
+
+    tasks = Task.query.filter_by(
+        dayplan_id=plan.id
+    ).all() if plan else []
+
+    today_score = sum(t.points for t in tasks if t.status == "completed")
+
+    # ---------- USER META ----------
+    xp = calculate_xp(current_user.id)
+    streak = calculate_streak(current_user.id)
+    rank = get_rank(xp)
+
+    # ---------- HEATMAP (last 30 days) ----------
+    heatmap = []
+    for i in range(30):
+        d = today - timedelta(days=i)
+        p = DayPlan.query.filter_by(
+            user_id=current_user.id,
+            date=d
+        ).first()
+        heatmap.append(p.final_score if p else 0)
+
+    heatmap.reverse()
+
+    # ---------- FRIENDS + LEADERBOARD ----------
+    leaderboard = []
+
+    # include self
+    leaderboard.append({
+        "name": current_user.username,
+        "streak": streak,
+        "score": today_score,
+        "is_me": True
+    })
+
+    friends = Friend.query.filter(
+        Friend.status == "accepted",
+        or_(
+            Friend.user_id == current_user.id,
+            Friend.friend_id == current_user.id
+        )
+    ).all()
+
+    for f in friends:
+        friend_id = (
+            f.friend_id if f.user_id == current_user.id else f.user_id
+        )
+        user = User.query.get(friend_id)
+
+        friend_plan = DayPlan.query.filter_by(
+            user_id=user.id,
+            date=today
+        ).first()
+
+        friend_tasks = Task.query.filter_by(
+            dayplan_id=friend_plan.id
+        ).all() if friend_plan else []
+
+        leaderboard.append({
+            "name": user.username,
+            "streak": calculate_streak(user.id),
+            "score": sum(t.points for t in friend_tasks if t.status == "completed"),
+            "is_me": False
+        })
+
+    leaderboard.sort(
+        key=lambda x: (x["streak"], x["score"]),
+        reverse=True
+    )
+
+    # ---------- RESPONSE ----------
+    return jsonify({
+        "user": {
+            "username": current_user.username,
+            "xp": xp,
+            "rank": rank,
+            "streak": streak,
+            "today_score": today_score
+        },
+        "tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "desc": t.description,
+                "start": t.expected_start.strftime("%H:%M"),
+                "end": t.expected_end.strftime("%H:%M"),
+                "status": t.status,
+                "points": t.points
+            } for t in tasks
+        ],
+        "heatmap": heatmap,
+        "leaderboard": leaderboard
+    })
+
 # ---------------- PLAN DAY ----------------
 @app.route('/plan', methods=['GET', 'POST'])
 @login_required
 def plan_day():
     if request.method == 'POST':
         plan_date = date.today() + timedelta(days=1)
+
         if is_plan_locked(plan_date):
-            return jsonify({"error": "Planning is locked for today"})
+            return jsonify({"error": "Planning is locked for today"}), 400
 
-        if DayPlan.query.filter_by(
-        user_id=current_user.id,
-        date=date.today()
-        ).first():
-            return jsonify({"error": "Plan already exists"})
+        # Check if plan already exists for the SAME date
+        existing_plan = DayPlan.query.filter_by(
+            user_id=current_user.id,
+            date=plan_date
+        ).first()
 
-        plan_date = date.today() + timedelta(days=1)
-        plan = DayPlan(user_id=current_user.id, date=plan_date)
-        db.session.add(plan)
-        db.session.commit()
+        if existing_plan:
+            return jsonify({"error": "Plan already exists"}), 400
 
-        total = 0
-        for t in request.json['tasks']:
-            total += t['points']
-            task = Task(
-                dayplan_id=plan.id,
-                title=t['title'],
-                description=t['description'],
-                expected_start=dtime.fromisoformat(t['start']),
-                expected_end=dtime.fromisoformat(t['end']),
-                points=t['points']
+        data = request.get_json()
+        if not data or 'tasks' not in data:
+            return jsonify({"error": "Invalid request data"}), 400
+
+        total_points = sum(t['points'] for t in data['tasks'])
+        if total_points != 100:
+            return jsonify({"error": "Total points must be 100"}), 400
+
+        try:
+            plan = DayPlan(
+                user_id=current_user.id,
+                date=plan_date
             )
-            db.session.add(task)
+            db.session.add(plan)
+            db.session.flush()  # get plan.id without committing
 
-        if total != 100:
-            return jsonify({"error": "Total points must be 100"})
+            for t in data['tasks']:
+                task = Task(
+                    dayplan_id=plan.id,
+                    title=t['title'],
+                    description=t.get('description', ''),
+                    expected_start=dtime.fromisoformat(t['start']),
+                    expected_end=dtime.fromisoformat(t['end']),
+                    points=t['points']
+                )
+                db.session.add(task)
 
-        db.session.commit()
-        return jsonify({"status": "saved"})
+            db.session.commit()
+            return jsonify({"status": "saved"}), 201
+
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({"error": "Plan already exists"}), 400
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 500
 
     return render_template('plan_day.html')
 
@@ -292,7 +492,7 @@ def plan_day():
 @app.route('/task/start/<int:id>', methods=['POST'])
 @login_required
 def start_task(id):
-    task = Task.query.get_or_404(id)
+    task = get_task_for_current_user(id)
 
     t = request.json['time']
     h, m = map(int, t.split(':'))
@@ -301,12 +501,12 @@ def start_task(id):
     task.status = "active"
 
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/task/complete/<int:id>', methods=['POST'])
 @login_required
 def complete_task(id):
-    task = Task.query.get_or_404(id)
+    task = get_task_for_current_user(id)
 
     t = request.json['time']
     h, m = map(int, t.split(':'))
@@ -323,9 +523,9 @@ def complete_task(id):
 
     task.planned_duration_minutes = planned
     task.actual_duration_minutes = actual
-
+    update_plan_final_score(task.dayplan_id)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/add-friend', methods=['POST'])
 @login_required
@@ -334,24 +534,27 @@ def add_friend():
     receiver = User.query.filter_by(username=username).first()
 
     if not receiver or receiver.id == current_user.id:
-        return redirect(url_for("dashboard"))
+        return api_error("Invalid user")
+
+    a, b = sorted([current_user.id, receiver.id])
 
     existing = Friend.query.filter_by(
-        user_id=current_user.id,
-        friend_id=receiver.id
+        user_id=a,
+        friend_id=b
     ).first()
 
     if existing:
         if existing.status == "pending":
-            return redirect(url_for("dashboard", msg="requested"))
+            return api_error("requested")
         if existing.status == "accepted":
-            return redirect(url_for("dashboard", msg="following"))
+            return api_error("following")
 
     friend_req = Friend(
-        user_id=current_user.id,
-        friend_id=receiver.id,
+        user_id=a,
+        friend_id=b,
         status="pending"
     )
+
     db.session.add(friend_req)
     db.session.flush()
 
@@ -363,36 +566,40 @@ def add_friend():
     ))
 
     db.session.commit()
-    return redirect(url_for("dashboard", msg="sent"))
+    return api_ok(message="sent",xp=calculate_xp(current_user.id))
 
 @app.route('/task/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_task(id):
-    task = Task.query.get_or_404(id)
+    task = get_task_for_current_user(id)
     if task.status != "pending":
-        return jsonify(error="Cannot delete started task")
+        return api_error("Cannot delete started task", 400)
+    plan_id = task.dayplan_id
     db.session.delete(task)
+    update_plan_final_score(plan_id)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/task/cancel/<int:id>', methods=['POST'])
 @login_required
 def cancel_task(id):
-    task = Task.query.get_or_404(id)
+    task = get_task_for_current_user(id)
     task.status = "cancelled"
     task.cancel_reason = request.json.get("reason")
     task.cancel_comment = request.json.get("comment")
+    update_plan_final_score(task.dayplan_id)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/task/incomplete/<int:id>', methods=['POST'])
 @login_required
 def incomplete_task(id):
-    task = Task.query.get_or_404(id)
+    task = get_task_for_current_user(id)
     task.status = "incomplete"
     task.incomplete_reason = request.json.get("reason")
+    update_plan_final_score(task.dayplan_id)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/history')
 @login_required
@@ -485,13 +692,21 @@ def leaderboard():
     if scope == "global":
         users = User.query.filter_by(show_global=True).all()
     else:
-        friends = Friend.query.filter_by(
-            user_id=current_user.id,
-            status="accepted"
+        friends = Friend.query.filter(
+            Friend.status == "accepted",
+            or_(
+                Friend.user_id == current_user.id,
+                Friend.friend_id == current_user.id
+            )
         ).all()
-        users = [current_user] + [
-            User.query.get(f.friend_id) for f in friends
-        ]
+
+        users = [current_user]
+
+        for f in friends:
+            other_id = (
+                f.friend_id if f.user_id == current_user.id else f.user_id
+            )
+            users.append(User.query.get(other_id))
 
     board = []
 
@@ -577,53 +792,57 @@ def leaderboard():
 @app.route('/friend/accept/<int:id>', methods=['POST'])
 @login_required
 def accept_friend(id):
-    req = Friend.query.get_or_404(id)
+    req = Friend.query.filter(
+        Friend.id == id,
+        or_(
+            Friend.user_id == current_user.id,
+            Friend.friend_id == current_user.id
+        ),
+        Friend.status == "pending"
+    ).first_or_404()
 
-    if req.friend_id != current_user.id:
-        return jsonify(error="Unauthorized")
-
+    # Accept
     req.status = "accepted"
 
-    # ✅ mark notification as read
+    # Mark ALL related notifications as read
     Notification.query.filter_by(
-        related_id=req.id,
-        user_id=current_user.id
+        related_id=req.id
     ).update({"is_read": True})
 
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/friend/decline/<int:id>', methods=['POST'])
 @login_required
 def decline_friend(id):
-    req = Friend.query.get_or_404(id)
+    req = Friend.query.filter(
+        Friend.id == id,
+        or_(
+            Friend.user_id == current_user.id,
+            Friend.friend_id == current_user.id
+        ),
+        Friend.status == "pending"
+    ).first_or_404()
 
-    if req.friend_id != current_user.id:
-        return jsonify(error="Unauthorized")
-
-    # delete request
-    db.session.delete(req)
-
-    # ✅ mark notification as read
     Notification.query.filter_by(
-        related_id=id,
-        user_id=current_user.id
+        related_id=req.id
     ).update({"is_read": True})
 
+    db.session.delete(req)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/friend/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_friend(id):
     f = Friend.query.get_or_404(id)
 
-    if f.user_id != current_user.id:
-        return jsonify(error="Unauthorized")
+    if current_user.id not in (f.user_id, f.friend_id):
+        return api_error("Unauthorized", 403)
 
     db.session.delete(f)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route('/privacy/global', methods=['POST'])
 @login_required
@@ -643,21 +862,27 @@ def toggle_global_privacy():
 @login_required
 def followers():
     # users who follow ME
-    relations = Friend.query.filter_by(
-        friend_id=current_user.id,
-        status="accepted"
+    relations = Friend.query.filter(
+        Friend.status == "accepted",
+        or_(
+            Friend.user_id == current_user.id,
+            Friend.friend_id == current_user.id
+        )
     ).all()
 
     followers = []
     for rel in relations:
-        user = User.query.get(rel.user_id)
+        user_id = rel.user_id if rel.friend_id == current_user.id else rel.friend_id
+        user = User.query.get(user_id)
 
         # check if I also follow them
-        following_back = Friend.query.filter_by(
-            user_id=current_user.id,
-            friend_id=user.id,
-            status="accepted"
-        ).first() is not None
+        following_back = Friend.query.filter(
+            Friend.status == "accepted",
+            or_(
+                Friend.user_id == current_user.id,
+                Friend.friend_id == current_user.id
+            )
+        ).first() is not None   
 
         followers.append({
             "rel_id": rel.id,
@@ -675,11 +900,11 @@ def remove_follower(rel_id):
 
     # only YOU can remove someone who follows YOU
     if rel.friend_id != current_user.id:
-        return jsonify(error="Unauthorized"), 403
+        return api_error("Unauthorized", 403)
 
     db.session.delete(rel)
     db.session.commit()
-    return jsonify(ok=True)
+    return api_ok(xp=calculate_xp(current_user.id))
 
 @app.route("/service-worker.js")
 def sw():
@@ -688,6 +913,13 @@ def sw():
 @app.route("/manifest.json")
 def manifest():
     return app.send_static_file("manifest.json")
+
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 # ---------------- RUN ----------------
 if __name__ == '__main__':
